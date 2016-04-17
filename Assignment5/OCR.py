@@ -12,6 +12,7 @@ from skimage.filters import roberts, sobel, scharr, prewitt
 from skimage import feature
 from skimage import img_as_bool
 from skimage.morphology import black_tophat, skeletonize, convex_hull_image
+from sklearn.neighbors import KNeighborsClassifier
 
 path = './chars74k-lite/'
 
@@ -20,25 +21,49 @@ class ImagePairs:
     def __init__(self):
         self.images = []
         self.letters = []
+        self.originals = []
 
 
 def loadImages():
     # Creates an initial imagePair
     imagePairs = ImagePairs()
-
     # Append the images and the correct labels to imagesPairs
     for directory in os.listdir(path):
         if len(directory) < 2:
             for filename in os.listdir(path+directory+'/'):
                 img = sp.misc.imread(path+directory+'/'+filename)
-                img = img.astype(np.float)/255
-                # printImage(img)
-                img = denoise_bilateral(img, sigma_range=0.1, sigma_spatial=15)
-                # printImage(img)
-                img = feature.canny(img)
-                # printImage(img)
+                imagePairs.originals.append(img)
+                img = useHoG(img)
                 imagePairs.images.append(img)
                 imagePairs.letters.append(directory)
+    return imagePairs
+
+
+def useCanny(img):
+    img = img.astype(np.float)/255
+    img = denoise_bilateral(img, sigma_range=0.1, sigma_spatial=15)
+    img = feature.canny(img)
+    return img
+
+
+def useHoG(img):
+    # 0.6469760900140648
+    img = feature.hog(img, orientations=8, pixels_per_cell=(3, 3), cells_per_block=(1, 1), visualise=False)
+    return img
+
+def loadTestImages(filename, letter):
+    # Creates an initial imagePair
+    imagePairs = ImagePairs()
+    # Append the images and the correct labels to imagesPairs
+    img = sp.misc.imread(filename)
+    img = img.astype(np.float)/255
+    # printImage(img)
+    img = denoise_bilateral(img, sigma_range=0.1, sigma_spatial=15)
+    # printImage(img)
+    img = feature.canny(img)
+    # printImage(img)
+    imagePairs.images.append(img)
+    imagePairs.letters.append(letter)
     return imagePairs
 
 
@@ -71,28 +96,51 @@ def reshape(images):
 
 def trainClassifierSVM(dataSet):
     classifier = svm.SVC()
-    classifier.fit(reshape(dataSet.images), dataSet.letters)
+    if type(dataSet.images[0][0]) is not np.float64:
+        classifier.fit(reshape(dataSet.images), dataSet.letters)
+    else:
+        classifier.fit(dataSet.images, dataSet.letters)
+    return classifier
+
+
+def trainClassifierkNN(dataSet):
+    classifier = KNeighborsClassifier(n_neighbors=3)
+    if type(dataSet.images[0][0]) is not np.float64:
+        classifier.fit(reshape(dataSet.images), dataSet.letters)
+    else:
+        classifier.fit(dataSet.images, dataSet.letters)
     return classifier
 
 
 def predictClassifierSVM(classifier, testSet):
-    return classifier.predict(reshape(testSet.images))
+    if type(testSet.images[0][0]) is not np.float64:
+        return classifier.predict(reshape(testSet.images))
+    else:
+        return classifier.predict(testSet.images)
 
 
-def main():
-    dataSet = loadImages()
-    dataSet, testSet = splitDataset(0.1, dataSet)
-    # images_and_labels = list(zip(dataSet.images, dataSet.letters))
-    # for index, (image, label) in enumerate(images_and_labels[:4]):
-    #     plt.subplot(2, 4, index + 1)
-    #     plt.axis('off')
-    #     plt.imshow(image, cmap=plt.cm.gray_r, interpolation='nearest')
-    #     plt.title('Training: ' + label)
-    classifier = trainClassifierSVM(dataSet)
-    predicted = predictClassifierSVM(classifier, testSet)
+def showImages(dataSet, testSet, predicted):
+    images_and_labels = list(zip(dataSet.images, dataSet.letters))
+    for index, (image, label) in enumerate(images_and_labels[:4]):
+        plt.subplot(2, 4, index + 1)
+        plt.axis('off')
+        plt.imshow(image, cmap=plt.cm.gray_r, interpolation='nearest')
+        plt.title('Training: ' + label)
     images_and_predictions = list(zip(testSet.images, predicted))
+    for index, (image, prediction) in enumerate(images_and_predictions[:4]):
+        plt.subplot(2, 4, index + 5)
+        plt.axis('off')
+        plt.imshow(image, cmap=plt.cm.gray_r, interpolation='nearest')
+        plt.title('Prediction: ' + prediction)
+    plt.show()
+
+
+def myTest(classifier, filename, letter):
+    testSet = loadTestImages(filename, letter)
+    predicted = predictClassifierSVM(classifier, testSet)
     correct = 0
     false = 0
+    images_and_predictions = list(zip(testSet.images, predicted))
     for index, (image, prediction) in enumerate(images_and_predictions):
         if prediction == testSet.letters[index]:
             correct += 1
@@ -100,17 +148,27 @@ def main():
         else:
             false += 1
             print("False:", prediction, testSet.letters[index])
-        # if index < 4:
-        #     plt.subplot(2, 4, index + 5)
-        #     plt.axis('off')
-        #     plt.imshow(image, cmap=plt.cm.gray_r, interpolation='nearest')
-        #     plt.title('Prediction: ' + prediction)
-    # print(testSet.letters[index])
-    # plt.show()
+
+def main():
+    dataSet = loadImages()
+    dataSet, testSet = splitDataset(0.1, dataSet)
+    classifier = trainClassifierSVM(dataSet)
+    predicted = predictClassifierSVM(classifier, testSet)
+    correct = 0
+    false = 0
+    images_and_predictions = list(zip(testSet.images, predicted))
+    for index, (image, prediction) in enumerate(images_and_predictions):
+        if prediction == testSet.letters[index]:
+            correct += 1
+            print("Correct:", prediction, testSet.letters[index])
+        else:
+            false += 1
+            print("False:", prediction, testSet.letters[index])
     print(correct/(correct+false))
+    # showImages(dataSet, testSet, predicted)
+    # myTest(classifier, 'testD.jpg', 'd')
 
 main()
-
 
 
 # /255, denoise(0.05,15), sobel -> 37.8 %
