@@ -8,18 +8,16 @@ from scipy import ndimage
 import PIL
 import time
 from skimage.restoration import denoise_tv_chambolle, denoise_bilateral
-from skimage.filters import roberts, sobel, scharr, prewitt
+from skimage.filters import sobel
 from skimage import feature
-from skimage import img_as_bool
-from skimage.morphology import black_tophat, skeletonize, convex_hull_image
 from sklearn.neighbors import KNeighborsClassifier
 from enum import Enum
 
 path = './chars74k-lite/'
-preprocessing = Enum('Preprocessing', 'CANNY, HOG')
+preprocessing = Enum('Preprocessing', 'SOBEL, HOG, BOTH')
 classifiers = Enum('Classifier', 'SVM, KNN')
 
-preprocess = preprocessing.HOG
+preprocess = preprocessing.BOTH
 classifier = classifiers.KNN
 
 
@@ -39,25 +37,29 @@ def loadImages():
             for filename in os.listdir(path+directory+'/'):
                 img = sp.misc.imread(path+directory+'/'+filename)
                 imagePairs.originals.append(img)
-                if preprocess == preprocessing.CANNY:
-                    img = useCanny(img)
+                if preprocess == preprocessing.SOBEL:
+                    img = useSOBEL(img)
                 elif preprocess == preprocessing.HOG:
+                    img = useHoG(img)
+                else:
+                    img = useSOBEL(img)
                     img = useHoG(img)
                 imagePairs.images.append(img)
                 imagePairs.letters.append(directory)
     return imagePairs
 
 
-def useCanny(img):
+def useSOBEL(img):
     img = img.astype(np.float)/255
     img = denoise_bilateral(img, sigma_range=0.1, sigma_spatial=15)
-    img = feature.canny(img)
+    img = sobel(img)
     return img
 
 
 def useHoG(img):
-    img = feature.hog(img, orientations=8, pixels_per_cell=(3, 3), cells_per_block=(6, 6))
+    img = feature.hog(img, orientations=9, pixels_per_cell=(3, 3), cells_per_block=(6, 6))
     return img
+
 
 def loadTestImages(filename, letter):
     # Creates an initial imagePair
@@ -66,7 +68,7 @@ def loadTestImages(filename, letter):
     img = sp.misc.imread(filename)
     img = img.astype(np.float)/255
     # printImage(img)
-    img = denoise_bilateral(img, sigma_range=0.1, sigma_spatial=15)
+    img = denoise_bilateral(img)
     # printImage(img)
     img = feature.canny(img)
     # printImage(img)
@@ -104,7 +106,7 @@ def reshape(images):
 
 
 def trainClassifierSVM(dataSet):
-    classifier = svm.SVC()
+    classifier = svm.SVC(probability=True)
     if type(dataSet.images[0][0]) is not np.float64:
         classifier.fit(reshape(dataSet.images), dataSet.letters)
     else:
@@ -113,7 +115,7 @@ def trainClassifierSVM(dataSet):
 
 
 def trainClassifierkNN(dataSet):
-    classifier = KNeighborsClassifier(n_neighbors=3)
+    classifier = KNeighborsClassifier(n_neighbors=5)
     if type(dataSet.images[0][0]) is not np.float64:
         classifier.fit(reshape(dataSet.images), dataSet.letters)
     else:
