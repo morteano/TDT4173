@@ -9,7 +9,7 @@ import PIL
 import time
 from skimage.restoration import denoise_tv_chambolle, denoise_bilateral
 from skimage.filters import sobel
-from skimage import feature
+from skimage import feature, color
 from sklearn.neighbors import KNeighborsClassifier
 from enum import Enum
 
@@ -66,12 +66,14 @@ def loadTestImages(filename, letter):
     imagePairs = ImagePairs()
     # Append the images and the correct labels to imagesPairs
     img = sp.misc.imread(filename)
-    img = img.astype(np.float)/255
-    # printImage(img)
-    img = denoise_bilateral(img)
-    # printImage(img)
-    img = feature.canny(img)
-    # printImage(img)
+    imagePairs.originals.append(img)
+    if preprocess == preprocessing.SOBEL:
+        img = useSOBEL(img)
+    elif preprocess == preprocessing.HOG:
+        img = useHoG(img)
+    else:
+        img = useSOBEL(img)
+        img = useHoG(img)
     imagePairs.images.append(img)
     imagePairs.letters.append(letter)
     return imagePairs
@@ -146,9 +148,9 @@ def showImages(dataSet, testSet, predicted):
     plt.show()
 
 
-def myTest(classifier, filename, letter):
+def myTest(classified, filename, letter):
     testSet = loadTestImages(filename, letter)
-    predicted = predictClassifier(classifier, testSet)
+    predicted = predictClassifier(classified, testSet)
     correct = 0
     false = 0
     images_and_predictions = list(zip(testSet.images, predicted))
@@ -159,6 +161,30 @@ def myTest(classifier, filename, letter):
         else:
             false += 1
             print("False:", prediction, testSet.letters[index])
+
+
+def detection(filename):
+    img = sp.misc.imread(filename)
+    img = color.rgb2gray(img)
+    subImages = getSubImages(img)
+    print(len(subImages))
+    return img
+
+
+def getSubImages(img):
+    subImages = []
+    for i in range(len(img)):
+        for j in range(len(img[i])):
+            if i % 5 == 4 and j % 5 == 4 and i + 9 < len(img) and j+9 < len(img[i]):
+                subImage = []
+                for k in range(i-10, i+9):
+                    line = []
+                    for l in range(j-10, j+9):
+                        line.append(img[k][l])
+                    subImage.append(line)
+                subImages.append(subImage)
+    return subImages
+
 
 def main():
     dataSet = loadImages()
@@ -180,11 +206,7 @@ def main():
             print("False:", prediction, testSet.letters[index])
     print(correct/(correct+false))
     showImages(dataSet, testSet, predicted)
-    # myTest(classifier, 'testD.jpg', 'd')
+    myTest(classified, 'testD.jpg', 'd')
 
-main()
-
-
-# /255, denoise(0.05,15), sobel -> 37.8 %
-
-
+# main()
+detection('rsz_grades.jpg')
