@@ -1,9 +1,10 @@
-from scipy import misc
+import scipy as sp
 import numpy as np
 import os
 import matplotlib.pyplot as plt
 import random
 from sklearn import datasets, svm, metrics
+from scipy import ndimage
 import PIL
 import time
 
@@ -24,7 +25,7 @@ def loadImages():
     for directory in os.listdir(path):
         if len(directory) < 2:
             for filename in os.listdir(path+directory+'/'):
-                img = misc.imread(path+directory+'/'+filename)
+                img = sp.misc.imread(path+directory+'/'+filename)
                 img = img.astype(np.float)/255
                 imagePairs.images.append(img)
                 imagePairs.letters.append(directory)
