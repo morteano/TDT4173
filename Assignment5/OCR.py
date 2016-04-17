@@ -69,6 +69,16 @@ def reshape(images):
     return reshapedList
 
 
+def trainClassifierSVM(dataSet):
+    classifier = svm.SVC()
+    classifier.fit(reshape(dataSet.images), dataSet.letters)
+    return classifier
+
+
+def predictClassifierSVM(classifier, testSet):
+    return classifier.predict(reshape(testSet.images))
+
+
 def main():
     dataSet = loadImages()
     dataSet, testSet = splitDataset(0.1, dataSet)
@@ -78,9 +88,8 @@ def main():
     #     plt.axis('off')
     #     plt.imshow(image, cmap=plt.cm.gray_r, interpolation='nearest')
     #     plt.title('Training: ' + label)
-    classifier = svm.SVC()
-    classifier.fit(reshape(dataSet.images), dataSet.letters)
-    predicted = classifier.predict(reshape(testSet.images))
+    classifier = trainClassifierSVM(dataSet)
+    predicted = predictClassifierSVM(classifier, testSet)
     images_and_predictions = list(zip(testSet.images, predicted))
     correct = 0
     false = 0
@@ -91,14 +100,14 @@ def main():
         else:
             false += 1
             print("False:", prediction, testSet.letters[index])
-    print(correct/(correct+false))
-
-    # plt.subplot(2, 4, index + 5)
-    # plt.axis('off')
-    # plt.imshow(image, cmap=plt.cm.gray_r, interpolation='nearest')
-    # plt.title('Prediction: ' + prediction)
+        # if index < 4:
+        #     plt.subplot(2, 4, index + 5)
+        #     plt.axis('off')
+        #     plt.imshow(image, cmap=plt.cm.gray_r, interpolation='nearest')
+        #     plt.title('Prediction: ' + prediction)
     # print(testSet.letters[index])
     # plt.show()
+    print(correct/(correct+false))
 
 main()
 
