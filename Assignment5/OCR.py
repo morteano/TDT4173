@@ -107,6 +107,14 @@ def reshape(images):
     return reshapedList
 
 
+def reshapeImage(image):
+    reshaped = []
+    for i in range(len(image)):
+        for j in range(len(image[i])):
+            reshaped.append(image[i][j])
+    return reshaped
+
+
 def trainClassifierSVM(dataSet):
     classifier = svm.SVC(probability=True)
     if type(dataSet.images[0][0]) is not np.float64:
@@ -163,27 +171,68 @@ def myTest(classified, filename, letter):
             print("False:", prediction, testSet.letters[index])
 
 
-def detection(filename):
-    img = sp.misc.imread(filename)
-    img = color.rgb2gray(img)
-    subImages = getSubImages(img)
-    print(len(subImages))
-    return img
+def detection(filename, classified):
+    pixels = 10
+    threshold = 0.9
+    origImg = sp.misc.imread(filename)
+    img = color.rgb2gray(origImg)
+    subImages, originals = getSubImages(img, pixels)
+    print("Start detecting")
+    progress = 0
+    quarter = 1
+    for i in range(len(subImages)):
+        if i >= quarter*len(subImages)/4:
+            quarter += 1
+            progress += 25
+            print("Progess", progress, "%")
+        for j in range(len(subImages[i])):
+            probs = classified.predict_proba(subImages[i][j])
+            maxV = max(probs[0])
+            if maxV > threshold:
+                # print(probs[0])
+                for k in range(len(probs[0])):
+                    if probs[0][k] == maxV:
+                        index = k
+                # printImage(originals[i][j])
+                # printImage(origImg)
+                if index == 0:
+                    for k in range(40):
+                        for l in range(40):
+                            if k < 3 or k > 36 or l < 3 or l > 36:
+                                origImg[i*pixels+k][j*pixels+l] = [0, 255, 0]
+    printImage(origImg)
+    return origImg
 
 
-def getSubImages(img):
+def getSubImages(img, pixels):
     subImages = []
+    originals = []
     for i in range(len(img)):
+        subImageRow = []
+        originalRow = []
         for j in range(len(img[i])):
-            if i % 5 == 4 and j % 5 == 4 and i + 9 < len(img) and j+9 < len(img[i]):
+            if i % pixels == pixels-1 and j % pixels == pixels-1 and i+9 < len(img) and j+9 < len(img[i]):
                 subImage = []
-                for k in range(i-10, i+9):
+                for k in range(i-10, i+10):
                     line = []
-                    for l in range(j-10, j+9):
+                    for l in range(j-10, j+10):
                         line.append(img[k][l])
                     subImage.append(line)
-                subImages.append(subImage)
-    return subImages
+                originalRow.append(subImage)
+                if preprocess == preprocessing.SOBEL:
+                    subImage = denoise_bilateral(subImage, sigma_range=0.1, sigma_spatial=15)
+                    subImage = sobel(subImage)
+                elif preprocess == preprocessing.HOG:
+                    subImage = useHoG(subImage)
+                else:
+                    subImage = denoise_bilateral(subImage, sigma_range=0.1, sigma_spatial=15)
+                    subImage = sobel(subImage)
+                    subImage = useHoG(subImage)
+                subImageRow.append(subImage)
+        if len(subImageRow) > 0:
+            subImages.append(subImageRow)
+            originals.append(originalRow)
+    return subImages, originals
 
 
 def main():
@@ -205,8 +254,14 @@ def main():
             false += 1
             print("False:", prediction, testSet.letters[index])
     print(correct/(correct+false))
-    showImages(dataSet, testSet, predicted)
+    # showImages(dataSet, testSet, predicted)
     myTest(classified, 'testD.jpg', 'd')
+    sp.misc.imsave('detected.jpg', detection('rsz_grades.jpg', classified))
 
-# main()
-detection('rsz_grades.jpg')
+main()
+# detection('rsz_grades.jpg', 0)
+
+
+# img = sp.misc.imread(path+'a/a_0.jpg')
+# img = sobel(img)
+# img = useHoG(img)
