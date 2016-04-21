@@ -9,15 +9,16 @@ from skimage.restoration import denoise_tv_chambolle, denoise_bilateral
 from skimage.filters import sobel
 from skimage import feature, color
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
 from enum import Enum
 
 path = './chars74k-lite/'
 preprocessing = Enum('Preprocessing', 'SOBEL, HOG, BOTH')
-classifiers = Enum('Classifier', 'SVM, KNN')
+classifiers = Enum('Classifier', 'SVM, KNN, RF')
 
-preprocess = preprocessing.BOTH
-classifier = classifiers.KNN
-detect = True
+preprocess = preprocessing.HOG
+classifier = classifiers.SVM
+detect = False
 
 
 class ImagePairs:
@@ -115,7 +116,24 @@ def reshapeImage(image):
 
 
 def trainClassifierSVM(dataSet):
-    classifier = svm.SVC(probability=True)
+    # if os.path.isfile("classifierSVM"):
+    #     file = open("classifierSVM", 'rb')
+    #     classifier = pickle.load(file)
+    #     file.close()
+    # else:
+    classifier = svm.SVC(gamma=10, C=30)
+    if type(dataSet.images[0][0]) is not np.float64:
+        classifier.fit(reshape(dataSet.images), dataSet.letters)
+    else:
+        classifier.fit(dataSet.images, dataSet.letters)
+        # file = open("classifierSVM","wb")
+        # pickle.dump(classifier, file)
+        # file.close()
+    return classifier
+
+
+def trainClassifierRF(dataSet):
+    classifier = RandomForestClassifier()
     if type(dataSet.images[0][0]) is not np.float64:
         classifier.fit(reshape(dataSet.images), dataSet.letters)
     else:
@@ -246,6 +264,41 @@ def getSubImages(img, pixels):
     return subImages, originals
 
 
+def findParameters():
+    dataSet = loadImages()
+    dataSet, testSet = splitDataset(0.1, dataSet)
+    best = 0
+    bestC = 0
+    bestGamma = 0
+    for i in [0.1, 1, 2, 5, 10, 20, 30]:
+        for j in [0.1, 1, 2, 5, 10, 20, 50, 100]:
+            classifier = svm.SVC(gamma=i, C=j)
+            if type(dataSet.images[0][0]) is not np.float64:
+                classifier.fit(reshape(dataSet.images), dataSet.letters)
+            else:
+                classifier.fit(dataSet.images, dataSet.letters)
+            if type(testSet.images[0][0]) is not np.float64:
+                predicted = classifier.predict(reshape(testSet.images))
+            else:
+                predicted = classifier.predict(testSet.images)
+            correct = 0
+            false = 0
+            images_and_predictions = list(zip(testSet.images, predicted))
+            for index, (image, prediction) in enumerate(images_and_predictions):
+                if prediction == testSet.letters[index]:
+                    correct += 1
+                else:
+                    false += 1
+            if correct/(correct+false) > best:
+                best = correct/(correct+false)
+                print("Best so far:", best)
+                bestC = j
+                bestGamma = i
+    print("Best c:", bestC)
+    print("Best gamma:", bestGamma)
+    print("Best prediction:", best)
+
+
 def testMain():
     avg = 0
     for i in range(5):
@@ -278,6 +331,8 @@ def main():
         classified = trainClassifierSVM(dataSet)
     elif classifier == classifiers.KNN:
         classified = trainClassifierkNN(dataSet)
+    elif classifier == classifiers.RF:
+        classified = trainClassifierRF(dataSet)
     predicted = predictClassifier(classified, testSet)
     correct = 0
     false = 0
@@ -296,5 +351,6 @@ def main():
         sp.misc.imsave('detected.jpg', detection('rsz_grades.jpg', classified))
         # sp.misc.imsave('detectedTestImg.jpg', detection('testImg.jpg', classified))
 
-main()
-# testMain()
+# main()
+testMain()
+# findParameters()
