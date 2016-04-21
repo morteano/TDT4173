@@ -4,9 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import random
 from sklearn import datasets, svm, metrics
-from scipy import ndimage
-import PIL
-import time
+import pickle
 from skimage.restoration import denoise_tv_chambolle, denoise_bilateral
 from skimage.filters import sobel
 from skimage import feature, color
@@ -19,6 +17,7 @@ classifiers = Enum('Classifier', 'SVM, KNN')
 
 preprocess = preprocessing.BOTH
 classifier = classifiers.KNN
+detect = True
 
 
 class ImagePairs:
@@ -125,11 +124,19 @@ def trainClassifierSVM(dataSet):
 
 
 def trainClassifierkNN(dataSet):
-    classifier = KNeighborsClassifier(n_neighbors=5)
-    if type(dataSet.images[0][0]) is not np.float64:
-        classifier.fit(reshape(dataSet.images), dataSet.letters)
+    if os.path.isfile("classifier"):
+        file = open("classifier", 'rb')
+        classifier = pickle.load(file)
+        file.close()
     else:
-        classifier.fit(dataSet.images, dataSet.letters)
+        classifier = KNeighborsClassifier(n_neighbors=5)
+        if type(dataSet.images[0][0]) is not np.float64:
+            classifier.fit(reshape(dataSet.images), dataSet.letters)
+        else:
+            classifier.fit(dataSet.images, dataSet.letters)
+        file = open("classifier","wb")
+        pickle.dump(classifier, file)
+        file.close()
     return classifier
 
 
@@ -172,14 +179,16 @@ def myTest(classified, filename, letter):
 
 
 def detection(filename, classified):
-    pixels = 10
-    threshold = 0.9
+    pixels = 8
+    threshold = 0.7
     origImg = sp.misc.imread(filename)
     img = color.rgb2gray(origImg)
     subImages, originals = getSubImages(img, pixels)
+    print("Number of images", len(subImages)*len(subImages[0]))
     print("Start detecting")
     progress = 0
     quarter = 1
+    potential = 0
     for i in range(len(subImages)):
         if i >= quarter*len(subImages)/4:
             quarter += 1
@@ -195,11 +204,13 @@ def detection(filename, classified):
                         index = k
                 # printImage(originals[i][j])
                 # printImage(origImg)
-                if index == 0:
-                    for k in range(40):
-                        for l in range(40):
-                            if k < 3 or k > 36 or l < 3 or l > 36:
-                                origImg[i*pixels+k][j*pixels+l] = [0, 255, 0]
+                if index == 3:
+                    potential += 1
+                    for k in range(20):
+                        for l in range(20):
+                            if k < 3 or k > 16 or l < 3 or l > 16:
+                                origImg[i*pixels+k][j*pixels+l] = [255*(1-2*probs[0][index]), 255*probs[0][index], 0]
+    print("I think I found", potential, "cases of you letter")
     printImage(origImg)
     return origImg
 
@@ -211,11 +222,11 @@ def getSubImages(img, pixels):
         subImageRow = []
         originalRow = []
         for j in range(len(img[i])):
-            if i % pixels == pixels-1 and j % pixels == pixels-1 and i+9 < len(img) and j+9 < len(img[i]):
+            if i % pixels == 0 and j % pixels == 0 and i+19 < len(img) and j+19 < len(img[i]):
                 subImage = []
-                for k in range(i-10, i+10):
+                for k in range(i, i+20):
                     line = []
-                    for l in range(j-10, j+10):
+                    for l in range(j, j+20):
                         line.append(img[k][l])
                     subImage.append(line)
                 originalRow.append(subImage)
@@ -233,6 +244,31 @@ def getSubImages(img, pixels):
             subImages.append(subImageRow)
             originals.append(originalRow)
     return subImages, originals
+
+
+def testMain():
+    avg = 0
+    for i in range(5):
+        dataSet = loadImages()
+        dataSet, testSet = splitDataset(0.1, dataSet)
+        if classifier == classifiers.SVM:
+            classified = trainClassifierSVM(dataSet)
+        elif classifier == classifiers.KNN:
+            classified = trainClassifierkNN(dataSet)
+        predicted = predictClassifier(classified, testSet)
+        correct = 0
+        false = 0
+        images_and_predictions = list(zip(testSet.images, predicted))
+        for index, (image, prediction) in enumerate(images_and_predictions):
+            if prediction == testSet.letters[index]:
+                correct += 1
+                print("Correct:", prediction, testSet.letters[index])
+            else:
+                false += 1
+                print("False:", prediction, testSet.letters[index])
+        print(correct/(correct+false))
+        avg += correct/(correct+false)
+    print("Avg:", avg/5)
 
 
 def main():
@@ -255,13 +291,10 @@ def main():
             print("False:", prediction, testSet.letters[index])
     print(correct/(correct+false))
     # showImages(dataSet, testSet, predicted)
-    myTest(classified, 'testD.jpg', 'd')
-    sp.misc.imsave('detected.jpg', detection('rsz_grades.jpg', classified))
+    # myTest(classified, 'testD.jpg', 'd')
+    if detect:
+        sp.misc.imsave('detected.jpg', detection('rsz_grades.jpg', classified))
+        # sp.misc.imsave('detectedTestImg.jpg', detection('testImg.jpg', classified))
 
 main()
-# detection('rsz_grades.jpg', 0)
-
-
-# img = sp.misc.imread(path+'a/a_0.jpg')
-# img = sobel(img)
-# img = useHoG(img)
+# testMain()
