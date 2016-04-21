@@ -18,7 +18,7 @@ classifiers = Enum('Classifier', 'SVM, KNN, RF')
 
 preprocess = preprocessing.HOG
 classifier = classifiers.SVM
-detect = False
+detect = True
 
 
 class ImagePairs:
@@ -116,19 +116,19 @@ def reshapeImage(image):
 
 
 def trainClassifierSVM(dataSet):
-    # if os.path.isfile("classifierSVM"):
-    #     file = open("classifierSVM", 'rb')
-    #     classifier = pickle.load(file)
-    #     file.close()
-    # else:
-    classifier = svm.SVC(gamma=10, C=30)
-    if type(dataSet.images[0][0]) is not np.float64:
-        classifier.fit(reshape(dataSet.images), dataSet.letters)
+    if os.path.isfile("classifierSVM"):
+        file = open("classifierSVM", 'rb')
+        classifier = pickle.load(file)
+        file.close()
     else:
-        classifier.fit(dataSet.images, dataSet.letters)
-        # file = open("classifierSVM","wb")
-        # pickle.dump(classifier, file)
-        # file.close()
+        classifier = svm.SVC(gamma=10, C=30, probability=True)
+        if type(dataSet.images[0][0]) is not np.float64:
+            classifier.fit(reshape(dataSet.images), dataSet.letters)
+        else:
+            classifier.fit(dataSet.images, dataSet.letters)
+        file = open("classifierSVM","wb")
+        pickle.dump(classifier, file)
+        file.close()
     return classifier
 
 
@@ -198,53 +198,70 @@ def myTest(classified, filename, letter):
 
 def detection(filename, classified):
     pixels = 8
-    threshold = 0.7
+    threshold = 0.6
+    searchIndex = 13
     origImg = sp.misc.imread(filename)
+    origImg /= 256**4
+    origImg = np.array(origImg, dtype=np.uint8) # This line only change the type, not values
     img = color.rgb2gray(origImg)
-    subImages, originals = getSubImages(img, pixels)
-    print("Number of images", len(subImages)*len(subImages[0]))
-    print("Start detecting")
-    progress = 0
-    quarter = 1
     potential = 0
-    for i in range(len(subImages)):
-        if i >= quarter*len(subImages)/4:
-            quarter += 1
-            progress += 25
-            print("Progess", progress, "%")
-        for j in range(len(subImages[i])):
-            probs = classified.predict_proba(subImages[i][j])
-            maxV = max(probs[0])
-            if maxV > threshold:
-                # print(probs[0])
-                for k in range(len(probs[0])):
-                    if probs[0][k] == maxV:
-                        index = k
-                # printImage(originals[i][j])
-                # printImage(origImg)
-                if index == 3:
-                    potential += 1
-                    for k in range(20):
-                        for l in range(20):
-                            if k < 3 or k > 16 or l < 3 or l > 16:
-                                origImg[i*pixels+k][j*pixels+l] = [255*(1-2*probs[0][index]), 255*probs[0][index], 0]
+    detX = []
+    detY = []
+    sizes = []
+    probss = []
+    for size in [20, 40, 60]:
+        subImages, originals = getSubImages(img, pixels, size)
+        print("Number of images", len(subImages)*len(subImages[0]))
+        print("Start detecting")
+        progress = 0
+        quarter = 1
+        for i in range(len(subImages)):
+            if i >= quarter*len(subImages)/4:
+                quarter += 1
+                progress += 25
+                print("Progess", progress, "%")
+            for j in range(len(subImages[i])):
+                probs = classified.predict_proba(subImages[i][j])
+                maxV = max(probs[0])
+                if maxV > threshold:
+                    # print(probs[0])
+                    for k in range(len(probs[0])):
+                        if probs[0][k] == maxV:
+                            index = k
+                    # printImage(originals[i][j])
+                    # printImage(origImg)
+                    if index == searchIndex:
+                        potential += 1
+                        detX.append(i*pixels)
+                        detY.append(j*pixels)
+                        sizes.append(size)
+                        probss.append(probs)
+    for i in range(len(detX)):
+        drawSquare(origImg, detX[i], detY[i], sizes[i], probss[i], searchIndex)
     print("I think I found", potential, "cases of you letter")
-    printImage(origImg)
+    printImage(img)
     return origImg
 
 
-def getSubImages(img, pixels):
+def drawSquare(img, pixelX, pixelY, size, probs, index):
+    for k in range(size):
+        for l in range(size):
+            if k < 3 or k > size-4 or l < 3 or l > size-4:
+                img[pixelX+k][pixelY+l] = [255*(1-2*probs[0][index]), 255*probs[0][index], 0]
+
+
+def getSubImages(img, pixels, size):
     subImages = []
     originals = []
     for i in range(len(img)):
         subImageRow = []
         originalRow = []
         for j in range(len(img[i])):
-            if i % pixels == 0 and j % pixels == 0 and i+19 < len(img) and j+19 < len(img[i]):
+            if i % pixels == 0 and j % pixels == 0 and i+size-1 < len(img) and j+size-1 < len(img[i]):
                 subImage = []
-                for k in range(i, i+20):
+                for k in range(i, i+size, int(size/20)):
                     line = []
-                    for l in range(j, j+20):
+                    for l in range(j, j+size, int(size/20)):
                         line.append(img[k][l])
                     subImage.append(line)
                 originalRow.append(subImage)
@@ -348,9 +365,9 @@ def main():
     # showImages(dataSet, testSet, predicted)
     # myTest(classified, 'testD.jpg', 'd')
     if detect:
-        sp.misc.imsave('detected.jpg', detection('rsz_grades.jpg', classified))
+        sp.misc.imsave('detectedTest.jpg', detection('handwritten.jpg', classified))
         # sp.misc.imsave('detectedTestImg.jpg', detection('testImg.jpg', classified))
 
-# main()
-testMain()
+main()
+# testMain()
 # findParameters()
